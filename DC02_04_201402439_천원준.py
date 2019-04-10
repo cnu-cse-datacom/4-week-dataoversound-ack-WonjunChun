@@ -126,6 +126,43 @@ def split_string(str):
     str = ''.join(templist)
     return str
 
+#decode 비트청크 반대과정
+#문자열을 비트스트림으로 변환하는 함수
+#8비트(1바이트)를 4비트 2개로 나눠주는 작업 필요
+def encode_bytestream(chunk_bits, byte_str):
+    out_bitstream = []
+    #우선 시작주파수는 잘렸으니 초반에 두번 넣어줌
+    out_bitstream.append(HANDSHAKE_START_HZ)
+    out_bitstream.append(HANDSHAKE_START_HZ)
+    
+    byte_str = [b&15  for b in byte_str[:]] #8비트 bytestream 데이터를 4비트로 변환
+    for b in byte_str:
+        #4비트 2개를 넣어줌
+        bitstr_input = ((b * STEP_HZ)+START_HZ)/44100
+        out_bitstream.append(bitstr_input)
+        #out_bitstream.append(-bitstr_input)
+        out_bitstream.append(bitstr_input)
+        #out_bitstream.append(-bitstr_input)
+    
+    #out_bitstream = [o/44100 for o in out_bitstream]
+    out_bitstream.append(HANDSHAKE_END_HZ)
+    out_bitstream.append(HANDSHAKE_END_HZ)
+    return out_bitstream
+
+#sin 파로 변환 후 출력
+def print_sound(byte_str):
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paFloat32, channels=1, rate=44100, output=True)
+
+    for b in byte_str:
+        samples = np.sin(2*np.pi*np.arange(44100/2)*b).astype(np.float32) #np.arange(44100/2)
+        stream.write(samples)
+    
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+
+
 
 def listen_linux(frame_rate=44100, interval=0.1):
 
@@ -154,10 +191,12 @@ def listen_linux(frame_rate=44100, interval=0.1):
         if in_packet and match(dom, HANDSHAKE_END_HZ):
             byte_stream = extract_packet(packet)
             
+            '''
             #test용 코드
             packet = list(map(int, packet))
             print(packet)#
-            
+            '''
+
             try:
                 byte_stream = RSCodec(FEC_BYTES).decode(byte_stream)
                 byte_stream = byte_stream.decode("utf-8")
@@ -166,7 +205,40 @@ def listen_linux(frame_rate=44100, interval=0.1):
                 if '201402439' in byte_stream: #문자열이 학번 포함하는 경우
                     byte_stream = split_string(byte_stream)
                     display(byte_stream)
+                    #print(byte_stream)
+
+                    #소리로 출력하기 위해서는 encode 과정 필요
+                    byte_stream = byte_stream.encode("utf-8")
+                    byte_stream = RSCodec(FEC_BYTES).encode(byte_stream)
+
+                    #print(byte_stream[:])
+
+
+
+                    '''
+                    temp_byte_stream = []
+
+                    for b in byte_stream:
+                        temp_byte_stream.append(b)append(HANDSHAKE_START_HZ) 
+                        for i in range(
+
+                    p = pyaudio.PyAudio()
+                    stream = p.open(format=pyaudio.paFloat32, channels=1, rate=44100, output = True)
+
+                    for temp in temp_byte_stream:
+                        samples = np.sin(2*np.pi*np.arange(44100*0.5)*(temp/44100)).astype(np.float32)
+                        stream.write(samples)
                     
+                    stream.stop_stream()
+                    stream.close()
+
+                    p.terminate()
+                    '''
+
+                    byte_stream = encode_bytestream(BITS, byte_stream)
+                    print_sound(byte_stream)
+
+
 
                 else: #문자열이 학번 포함하지 않는경우, 보낸 신호에 학번이 포함되지 않았다고 뜸
                     print("there is no exist student ID")
